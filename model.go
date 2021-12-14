@@ -15,23 +15,45 @@ package godes
 import (
 	"container/list"
 	"fmt"
+
 	//"sync"
 	"time"
 )
 
+// simulationSecondScale 仿真时钟步进：100毫秒；
 const simulationSecondScale = 100
+
+// ===============================================================================
+// 以下状态取值用于标记Runner的各种状态；
+
+// rUNNER_STATE_READY 准备状态
 const rUNNER_STATE_READY = 0
+
+// rUNNER_STATE_ACTIVE 活动状态
 const rUNNER_STATE_ACTIVE = 1
+
+// rUNNER_STATE_WAITTING_COND 等待条件状态
 const rUNNER_STATE_WAITING_COND = 2
+
+// rUNNER_STATE_SCHEDULED 排程状态；
 const rUNNER_STATE_SCHEDULED = 3
+
+// rUNNER_STATE_INTERRUPTED 中断状态
 const rUNNER_STATE_INTERRUPTED = 4
+
+// rUNNER_STATE_TERMINATED 终止状态
 const rUNNER_STATE_TERMINATED = 5
 
+//=================================================================================
+
 var modl *model
+
+// 当前仿真时刻
 var stime float64 = 0
 
 // WaitUntilDone stops the main goroutine and waits
 // until all the runners finished executing the Run()
+// 停止模型的主协程运行，并等待所有Runner执行完成Run()函数；
 func WaitUntilDone() {
 	if modl == nil {
 		panic(" not initilized")
@@ -40,6 +62,7 @@ func WaitUntilDone() {
 }
 
 //AddRunner adds the runner obejct into model
+// 增加一个Runner（需实现了RunnerInterface接口）到模型中（激活Runner）；
 func AddRunner(runner RunnerInterface) {
 	if runner == nil {
 		panic("runner is nil")
@@ -51,6 +74,7 @@ func AddRunner(runner RunnerInterface) {
 }
 
 //Interrupt holds the runner execution
+// 挂起指定的Runner的执行；
 func Interrupt(runner RunnerInterface) {
 	if runner == nil {
 		panic("runner is nil")
@@ -62,6 +86,7 @@ func Interrupt(runner RunnerInterface) {
 }
 
 //Resume restarts the runner execution
+// 恢复指定Runner的执行；
 func Resume(runner RunnerInterface, timeChange float64) {
 	if runner == nil {
 		panic("runner is nil")
@@ -74,7 +99,9 @@ func Resume(runner RunnerInterface, timeChange float64) {
 
 //Run starts the simulation model.
 // Must be called explicitly.
+// 启动模型；
 func Run() {
+	// 如果模型不存在，则创建模型
 	if modl == nil {
 		createModel(false)
 	}
@@ -82,18 +109,16 @@ func Run() {
 	if modl.activeRunner == nil {
 		panic("runner is nil")
 	}
-
 	if modl.activeRunner.getInternalId() != 0 {
 		panic("it comes from not from the main go routine")
 	}
-
 	modl.simulationActive = true
 	modl.control()
-
 }
 
-//Advance the simulation time
+//Advance the simulation time 推进仿真时间，按指定的时间间隔推进模型的仿真时钟；
 func Advance(interval float64) {
+	// 如果模型不存在，则生成模型，否则让模型根据时间间隔进行仿真时钟的推进；
 	if modl == nil {
 		createModel(false)
 	}
@@ -101,6 +126,7 @@ func Advance(interval float64) {
 }
 
 // Verbose sets the model in the verbose mode
+// 设置模型为debug模式；
 func Verbose(v bool) {
 	if modl == nil {
 		createModel(v)
@@ -109,6 +135,7 @@ func Verbose(v bool) {
 }
 
 // Clear the model between the runs
+// 清除模型（重置模型）；
 func Clear() {
 	if modl == nil {
 		panic(" No model exist")
@@ -122,16 +149,19 @@ func Clear() {
 }
 
 // GetSystemTime retuns the current simulation time
+// 返回当前仿真时刻
 func GetSystemTime() float64 {
 	return stime
 }
 
 // Yield stops the runner for short time
+// 停止Runner极短的一个时间
 func Yield() {
 	Advance(0.01)
 }
 
 // createModel
+// 创建模型
 func createModel(verbose bool) {
 	if modl != nil {
 		panic("model is already active")
@@ -143,23 +173,50 @@ func createModel(verbose bool) {
 	//assuming that it comes from the main go routine
 }
 
+// model 模型，是整个仿真的运行核心，负责根据仿真时钟，进行各种Runner的推进工作；
 type model struct {
 	//mu                  sync.RWMutex
-	activeRunner        RunnerInterface
-	movingList          *list.List
-	scheduledList       *list.List
-	waitingList         *list.List
+
+	// 当前活动的Runner
+	activeRunner RunnerInterface
+
+	// 当前推进中的Runner列表
+	movingList *list.List
+
+	// 当前排程中的Runner列表
+	scheduledList *list.List
+
+	// 当前等待中的runner列表；
+	waitingList *list.List
+
+	// 等待条件中的Runner列表；
 	waitingConditionMap map[int]RunnerInterface
-	interruptedMap      map[int]RunnerInterface
-	terminatedList      *list.List
-	currentId           int
-	controlChannel      chan int
-	simulationActive    bool
-	DEBUG               bool
+
+	// 中断中的Runner列表；
+	interruptedMap map[int]RunnerInterface
+
+	// 终止的Runner列表；
+	terminatedList *list.List
+
+	// 当前ID
+	currentId int
+
+	// 控制用channel
+	controlChannel chan int
+
+	// 模型运行标记
+	simulationActive bool
+
+	// debug标记；
+	DEBUG bool
 }
 
 //newModel initilizes the model
+// 初始化模型
 func newModel(verbose bool) *model {
+
+	// ball 初始化模型时的内置活动Runner，优先级设置为100（最低），只为了保持模型的运行（活动）
+	// 没有实际性的计算内容存在；
 
 	var ball *Runner = newRunner()
 	ball.channel = make(chan int)
@@ -174,29 +231,50 @@ func newModel(verbose bool) *model {
 	return &mdl
 }
 
+// advance 按指定的时间间隔推进仿真时钟，推进成功返回true；
 func (mdl *model) advance(interval float64) bool {
 
+	// 获取模型中活动runner的通道；
 	ch := mdl.activeRunner.getChannel()
+
+	// 推进活动Runner的时间为当前仿真时刻+指定的时间间隔；
 	mdl.activeRunner.setMovingTime(stime + interval)
+	// 设置活动Runner的状态为排程状态；
 	mdl.activeRunner.setState(rUNNER_STATE_SCHEDULED)
+
+	// 将活动Runner从推动列表中移出。
 	mdl.removeFromMovingList(mdl.activeRunner)
+
+	// 将活动Runner加入排程列表；
 	mdl.addToSchedulledList(mdl.activeRunner)
+
 	//restart control channel and freez
+	// 重启控制channel 并 freez ？？TODO
 	mdl.controlChannel <- 100
+
+	// 等待活动Runner的channel（信号？执行完成？）
 	<-ch
+
 	return true
 }
 
 func (mdl *model) waitUntillDone() {
 
+	// 如果模型的当前活动Runner不是Ball，则Panic，为什么 TODO
 	if mdl.activeRunner.getInternalId() != 0 {
 		panic("waitUntillDone initiated for not main ball")
 	}
 
+	// 从推进列表中移除当前活动Runner
 	mdl.removeFromMovingList(mdl.activeRunner)
-	mdl.controlChannel <- 100
-	for {
 
+	// 为什么是100 塞入 channel
+	mdl.controlChannel <- 100
+
+	// 启动循环，判断模型是否不在仿真活动状态，如果不在仿真活动状态，则直接退出运行；
+	// 如果在仿真活动状态，并且处于Debug模式下，则打印推进列表的长度；
+	// 同时，将主协程休眠100毫秒；
+	for {
 		if !modl.simulationActive {
 			break
 		} else {
@@ -208,23 +286,39 @@ func (mdl *model) waitUntillDone() {
 	}
 }
 
+// add 增加Runner
 func (mdl *model) add(runner RunnerInterface) bool {
 
+	// 把当前ID加一；
 	mdl.currentId++
+
 	runner.setChannel(make(chan int))
+
+	// 设置runner的推进时间为默认仿真时间
 	runner.setMovingTime(stime)
+	// 设置runner的内部ID为当前ID；
 	runner.setInternalId(mdl.currentId)
+	// 设置runner的初始状态为Ready状态；
 	runner.setState(rUNNER_STATE_READY)
+	// 将runner进入推进中列表；
 	mdl.addToMovingList(runner)
 
+	//启动一个协程专门跑runner
 	go func() {
+		// 等待runner的触发信号；
 		<-runner.getChannel()
+		//在收到触发信息后，进行如下操作：
+
+		// 设置runner的标记时间为当前时间；
 		runner.setMarkTime(time.Now())
+		// 执行runner的Run()函数；
 		runner.Run()
 		if mdl.activeRunner == nil {
 			panic("remove: activeRunner == nil")
 		}
+		// 从推进列表中移除模型当前活动的Runner ？？ 为什么？ TODO
 		mdl.removeFromMovingList(mdl.activeRunner)
+
 		mdl.activeRunner.setState(rUNNER_STATE_TERMINATED)
 		mdl.activeRunner = nil
 		mdl.controlChannel <- 100
@@ -255,7 +349,6 @@ func (mdl *model) resume(runner RunnerInterface, timeChange float64) {
 	mdl.addToSchedulledList(runner)
 
 }
-
 
 func (mdl *model) booleanControlWait(b *BooleanControl, val bool) {
 

@@ -17,6 +17,7 @@ import (
 	"time"
 )
 
+// RunnerInterface 活动对象的接口，所有活动对象必须实现本接口的所有函数
 type RunnerInterface interface {
 	Run()
 	setState(i int)
@@ -39,19 +40,39 @@ type RunnerInterface interface {
 	getWaitingForBoolControlTimeoutId() int
 }
 
+// Runner 运行者对象，实现了RunnerInterface除Run()函数外的全部方法；
 type Runner struct {
-	state                          int
-	channel                        chan int
-	internalId                     int
-	movingTime                     float64
-	markTime                       time.Time
-	priority                       int
-	waitingForBool                 bool
-	waitingForBoolControl          *BooleanControl
+	// state 状态
+	state int
+
+	// channel
+	channel chan int
+
+	// internalID 内部id
+	internalId int
+
+	// movingTime 移动时间
+	movingTime float64
+
+	// markTime 标记时间
+	markTime time.Time
+
+	// priority 优先级
+	priority int
+
+	// waitingForBool 是否正在等待Bool值
+	waitingForBool bool
+
+	// waitingForBoolControl 等待的Bool控制器
+	waitingForBoolControl *BooleanControl
+
+	// waitingForBoolControlTimeoutID 等待中的Bool控制器超时ID
 	waitingForBoolControlTimeoutId int
+
 	//schedulledTime					 float64
 }
 
+// TimeoutRunner 超时运行者
 type TimeoutRunner struct {
 	*Runner
 	original      RunnerInterface
