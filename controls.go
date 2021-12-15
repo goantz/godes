@@ -28,8 +28,8 @@
 //See examples for usage.
 package godes
 
-
 // BooleanControl is a boolean control variable
+// 用于对多Runner的执行进行同步控制
 type BooleanControl struct {
 	state bool
 }

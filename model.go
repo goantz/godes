@@ -318,15 +318,18 @@ func (mdl *model) add(runner RunnerInterface) bool {
 		}
 		// 从推进列表中移除模型当前活动的Runner ？？ 为什么？ TODO
 		mdl.removeFromMovingList(mdl.activeRunner)
-
+		// 设置当前活动的Runner为终止状态；
 		mdl.activeRunner.setState(rUNNER_STATE_TERMINATED)
+		// 设置模型的当前活动runner为空
 		mdl.activeRunner = nil
+
 		mdl.controlChannel <- 100
 	}()
 	return true
 
 }
 
+// interrupt 中断指定Runner的运行
 func (mdl *model) interrupt(runner RunnerInterface) {
 
 	if runner.getState() != rUNNER_STATE_SCHEDULED {
@@ -338,6 +341,7 @@ func (mdl *model) interrupt(runner RunnerInterface) {
 
 }
 
+// resume 恢复指定Runner的运行
 func (mdl *model) resume(runner RunnerInterface, timeChange float64) {
 	if runner.getState() != rUNNER_STATE_INTERRUPTED {
 		panic("It is not  rUNNER_STATE_INTERRUPTED")
@@ -350,19 +354,18 @@ func (mdl *model) resume(runner RunnerInterface, timeChange float64) {
 
 }
 
+// booleanControlWait 等待boolControl
 func (mdl *model) booleanControlWait(b *BooleanControl, val bool) {
 
-	ch := mdl.activeRunner.getChannel()
 	if mdl.activeRunner == nil {
 		panic("booleanControlWait - no runner")
 	}
 
+	ch := mdl.activeRunner.getChannel()
 	mdl.removeFromMovingList(mdl.activeRunner)
-
 	mdl.activeRunner.setState(rUNNER_STATE_WAITING_COND)
 	mdl.activeRunner.setWaitingForBool(val)
 	mdl.activeRunner.setWaitingForBoolControl(b)
-
 	mdl.addToWaitingConditionMap(mdl.activeRunner)
 	mdl.controlChannel <- 100
 	<-ch
@@ -388,21 +391,31 @@ func (mdl *model) booleanControlSet(b *BooleanControl) {
 
 }
 
+// control 模型的运行控制核心逻辑
 func (mdl *model) control() bool {
 
+	// 在启动时，如果模型没有活动的Runner，则直接报错。(因为在模型创建时，已经生成了一个内置的ball)
+	//
 	if mdl.activeRunner == nil {
 		panic("control: activeBall == nil")
 	}
 
+	// 启动核心处理线程，进行调度处理；
 	go func() {
 		var runner RunnerInterface
 		for {
+			// 等待模型的下一步信号触发，触发点包括：Advance，booleanControlSet,booleanControlWait,AddRunner,Run
 			<-mdl.controlChannel
+
+			// 如果“等待条件”的列表中存在Runner
 			if mdl.waitingConditionMap != nil && len(mdl.waitingConditionMap) > 0 {
 				for key, temp := range mdl.waitingConditionMap {
+
+					// 等待条件的runner没有bool控制器，panic
 					if temp.getWaitingForBoolControl() == nil {
 						panic("  no BoolControl")
 					}
+					// 存在
 					if temp.getWaitingForBool() == temp.getWaitingForBoolControl().GetState() {
 						temp.setState(rUNNER_STATE_READY)
 						temp.setWaitingForBoolControl(nil)
